@@ -1,0 +1,354 @@
+---
+title: "Capstone MS Report v3"
+author: "Irene Teo"
+date: "25 July, 2015"
+output: html_document
+---
+
+##Executive Summary
+The aim of this project is to build a text prediction application using a model based on a corpus of supplied data derived from blogs, news feeds and twitter feeds. This report discusses the preliminary stages of the project to gain a basic understanding of the data being processed, where the data is first cleaned and packaged into a form that can be used for exploratory analysis.
+
+##Getting Data and Processing
+
+The library is set up, system is rigged and data is loaded into the system.
+```{r}
+
+# Load all the needed library
+library(RWeka)
+library(stringi)
+library(tm)
+library(SnowballC)
+library(reshape2)
+library(openNLP)
+library(RWeka)
+library(googleVis)
+op <- options(gvis.plot.tag='chart')
+library(qdap)
+library(wordcloud)
+```
+
+```{r}
+
+setwd("~/Desktop/final/en_US")
+# Loading the data
+con <- file("en_US.twitter.txt", "r")
+twitter <- readLines(con)
+close(con)
+
+con <- file("en_US.blogs.txt", "r")
+blogs <- readLines(con)
+close(con)
+
+con <- file("en_US.news.txt", "r")
+news <- readLines(con)
+close(con)
+rm(con)
+
+twitter.vector  <- VectorSource(twitter)
+blogs.vector    <- VectorSource(blogs)
+news.vector     <- VectorSource(news)
+```
+
+Basic Summary of data
+```{r}
+summary <- as.data.frame(c("en_US.news.txt", "en_US.blogs.txt", "en_US.twitter.txt"))
+
+summary$filesize <- c(
+    file.info("en_US.news.txt")$size,
+    file.info("en_US.blogs.txt")$size,
+    file.info("en_US.twitter.txt")$size
+)
+summary$lines <- c(
+    news.vector$length,
+    blogs.vector$length,
+    twitter.vector$length
+    )
+
+summary$words <- c(
+    length(unlist(stri_extract_all_words(news))),
+    length(unlist(stri_extract_all_words(blogs))),
+    length(unlist(stri_extract_all_words(twitter)))
+    )
+
+summary$characters <- c(
+    sum(nchar(news)),
+    sum(nchar(blogs)),
+    sum(nchar(twitter))
+    )      
+
+summary$min_character_per_line <- c(
+    min(nchar(news)),
+    min(nchar(blogs)),
+    min(nchar(twitter))
+    )
+
+summary$max_character_per_line <- c(
+    max(nchar(news)),
+    max(nchar(blogs)),
+    max(nchar(twitter))
+    )
+
+summary$mean_character_per_line <- c(
+    mean(nchar(news)),
+    mean(nchar(blogs)),
+    mean(nchar(twitter))
+    )
+
+colnames(summary) <- c(
+    "file names",
+    "file size (in bytes)",
+    "Number of lines",
+    "Number of Words",
+    "Number of characters",
+    "Minimum number of characters per line",
+    "Maximum number of characters per line",
+    "Mean number of characters per line"
+    )
+summary_plot <- gvisTable(
+    summary,
+    formats=list(
+        "file size (in bytes)" = "#,###",
+        "Number of lines" = "#,###",
+        "Number of Words" = "#,###",
+        "Number of characters" = "#,###",
+        "Minimum number of characters per line" = "#,###",
+        "Maximum number of characters per line" = "#,###",
+        "Mean number of characters per line" = "#,###"
+        )
+    )
+
+print(summary_plot, "chart")
+```
+
+##Building Corpus Sample
+We consider a subset of all the datasets where we choose only 1000 lines from each dataset to allow the code to run faster for further analysis.
+```{r}
+sample.size <- 1000
+
+twitter.sample  <- sample(twitter, size = sample.size)
+blogs.sample    <- sample(blogs, size = sample.size)
+news.sample     <- sample(x = news, size = sample.size)
+```
+
+##Creating a Corpus
+```{r}
+# Create a corpus
+Create_Corpus <- function(sample) {
+    Corpus <- VCorpus(VectorSource(sample))
+    Corpus <- tm_map(Corpus, removePunctuation)
+    Corpus <- tm_map(Corpus, stripWhitespace)
+    Corpus <- tm_map(Corpus, removeNumbers)
+    Corpus <- tm_map(Corpus, content_transformer(tolower))
+#     Corpus <- tm_map(Corpus, removeWords, Profanities)
+    Corpus <- tm_map(Corpus, stemDocument) # Stem document
+    return(Corpus)
+}
+
+twitter.corpus  <- Create_Corpus(twitter.sample)
+blogs.corpus    <- Create_Corpus(blogs.sample)
+news.corpus     <- Create_Corpus(news.sample)
+```
+
+##Exploratory Analysis
+
+###Frequencies of the ONE-gram, TWO-gram and TRI-gram in the Sample data.
+```{r}
+One_Gram_Tokenizer <- function(x) {RWeka::NGramTokenizer(x, RWeka::Weka_control(min = 1, max = 1))}
+Two_Gram_Tokenizer <- function(x) {RWeka::NGramTokenizer(x, RWeka::Weka_control(min = 2, max = 2))}
+Tri_Gram_Tokenizer <- function(x) {RWeka::NGramTokenizer(x, RWeka::Weka_control(min = 3, max = 3))}
+
+twitter.One_Gram <- TermDocumentMatrix(twitter.corpus, control = list( tokenize = One_Gram_Tokenizer))
+twitter.Two_Gram <- TermDocumentMatrix(twitter.corpus, control = list( tokenize = Two_Gram_Tokenizer))
+twitter.Tri_Gram <- TermDocumentMatrix(twitter.corpus, control = list( tokenize = Tri_Gram_Tokenizer))
+
+blogs.One_Gram <- TermDocumentMatrix(blogs.corpus, control = list( tokenize = One_Gram_Tokenizer))
+blogs.Two_Gram <- TermDocumentMatrix(blogs.corpus, control = list( tokenize = Two_Gram_Tokenizer))
+blogs.Tri_Gram <- TermDocumentMatrix(blogs.corpus, control = list( tokenize = Tri_Gram_Tokenizer))
+
+news.One_Gram <- TermDocumentMatrix(news.corpus, control = list( tokenize = One_Gram_Tokenizer))
+news.Two_Gram <- TermDocumentMatrix(news.corpus, control = list( tokenize = Two_Gram_Tokenizer))
+news.Tri_Gram <- TermDocumentMatrix(news.corpus, control = list( tokenize = Tri_Gram_Tokenizer))
+```
+
+###Twitter data n-grams frequency analysis
+```{r}
+top <- 50
+twitter.One_Gram_Analysis <- sort(rowSums(as.matrix(twitter.One_Gram)), decreasing = TRUE)
+twitter.One_Gram_Analysis <- as.data.frame(as.matrix(twitter.One_Gram_Analysis))
+twitter.One_Gram_Analysis$TriGram <- rownames(twitter.One_Gram_Analysis)
+twitter.One_Gram_Analysis <- twitter.One_Gram_Analysis[,c(2,1)]
+colnames(twitter.One_Gram_Analysis) <- c("twitter.1-gram", "count")
+
+One_Gram_Plot_twitter <- gvisColumnChart(
+    head(twitter.One_Gram_Analysis, top),
+    xvar = "twitter.1-gram",
+    yvar = "count",
+    options=list(
+        width=900,height=400,
+        title = paste("The top ", top ," 1-grams with Highest Frequency over n=", sample.size, " samples from the ", summary[3,1] ," dataset", sep="")
+        )
+    )
+
+twitter.Two_Gram_Analysis <- sort(rowSums(as.matrix(twitter.Two_Gram)), decreasing = TRUE)
+twitter.Two_Gram_Analysis <- as.data.frame(as.matrix(twitter.Two_Gram_Analysis))
+twitter.Two_Gram_Analysis$TriGram <- rownames(twitter.Two_Gram_Analysis)
+twitter.Two_Gram_Analysis <- twitter.Two_Gram_Analysis[,c(2,1)]
+colnames(twitter.Two_Gram_Analysis) <- c("twitter.2-gram", "count")
+
+Two_Gram_Plot_twitter <- gvisColumnChart(
+    head(twitter.Two_Gram_Analysis, top),
+    xvar = "twitter.2-gram",
+    yvar = "count",
+    options=list(
+        width=900,height=400,
+        title = paste("The top ", top, " 2-grams with Highest Frequency over n=", sample.size, " samples from the ", summary[3,1] ," dataset", sep="")
+        )
+    )
+
+twitter.Tri_Gram_Analysis <- sort(rowSums(as.matrix(twitter.Tri_Gram)), decreasing = TRUE)
+twitter.Tri_Gram_Analysis <- as.data.frame(as.matrix(twitter.Tri_Gram_Analysis))
+twitter.Tri_Gram_Analysis$TriGram <- rownames(twitter.Tri_Gram_Analysis)
+twitter.Tri_Gram_Analysis <- twitter.Tri_Gram_Analysis[,c(2,1)]
+colnames(twitter.Tri_Gram_Analysis) <- c("twitter.3-gram", "count")
+
+Tri_Gram_Plot_twitter <- gvisColumnChart(
+    head(twitter.Tri_Gram_Analysis, top),
+    xvar = "twitter.3-gram",
+    yvar = "count",
+    options=list(
+        width=900,height=400,
+        title = paste("The top ", top, " 3-grams with Highest Frequency over n=", sample.size, " samples from the ", summary[3,1] ," dataset", sep="")
+
+        )
+    )
+
+n_Gram_Plot_twitter <- gvisMerge(One_Gram_Plot_twitter, Two_Gram_Plot_twitter, horizontal = FALSE)
+n_Gram_Plot_twitter <- gvisMerge(n_Gram_Plot_twitter, Tri_Gram_Plot_twitter, horizontal = FALSE)
+
+print(n_Gram_Plot_twitter, "chart")
+```
+
+
+###Blogs data n-grams frequency analysis
+```{r}
+blogs.One_Gram_Analysis <- sort(rowSums(as.matrix(blogs.One_Gram)), decreasing = TRUE)
+blogs.One_Gram_Analysis <- as.data.frame(as.matrix(blogs.One_Gram_Analysis))
+blogs.One_Gram_Analysis$TriGram <- rownames(blogs.One_Gram_Analysis)
+blogs.One_Gram_Analysis <- blogs.One_Gram_Analysis[,c(2,1)]
+colnames(blogs.One_Gram_Analysis) <- c("blogs.1-gram", "count")
+
+One_Gram_Plot_blogs <- gvisColumnChart(
+    head(blogs.One_Gram_Analysis, top),
+    xvar = "blogs.1-gram",
+    yvar = "count",
+    options=list(
+        width=900,height=400,
+        title = paste("The top ", top, " 1-grams with Highest Frequency over n=", sample.size, " samples from the ", summary[2,1] ," dataset", sep="")
+
+        )
+    )
+
+blogs.Two_Gram_Analysis <- sort(rowSums(as.matrix(blogs.Two_Gram)), decreasing = TRUE)
+blogs.Two_Gram_Analysis <- as.data.frame(as.matrix(blogs.Two_Gram_Analysis))
+blogs.Two_Gram_Analysis$TriGram <- rownames(blogs.Two_Gram_Analysis)
+blogs.Two_Gram_Analysis <- blogs.Two_Gram_Analysis[,c(2,1)]
+colnames(blogs.Two_Gram_Analysis) <- c("blogs.2-gram", "count")
+
+Two_Gram_Plot_blogs <- gvisColumnChart(
+    head(blogs.Two_Gram_Analysis, top),
+    xvar = "blogs.2-gram",
+    yvar = "count",
+    options=list(
+        width=900,height=400,
+        title = paste("The top ", top, " 2-grams with Highest Frequency over n=", sample.size, " samples from the ", summary[2,1] ," dataset", sep="")
+        )
+    )
+
+blogs.Tri_Gram_Analysis <- sort(rowSums(as.matrix(blogs.Tri_Gram)), decreasing = TRUE)
+blogs.Tri_Gram_Analysis <- as.data.frame(as.matrix(blogs.Tri_Gram_Analysis))
+blogs.Tri_Gram_Analysis$TriGram <- rownames(blogs.Tri_Gram_Analysis)
+blogs.Tri_Gram_Analysis <- blogs.Tri_Gram_Analysis[,c(2,1)]
+colnames(blogs.Tri_Gram_Analysis) <- c("blogs.3-gram", "count")
+
+Tri_Gram_Plot_blogs <- gvisColumnChart(
+    head(blogs.Tri_Gram_Analysis, top),
+    xvar = "blogs.3-gram",
+    yvar = "count",
+    options=list(
+        width=900,height=400,
+        title = paste("The top ", top, " 3-grams with Highest Frequency over n=", sample.size, " samples from the ", summary[2,1] ," dataset", sep="")
+        )
+    )
+n_Gram_Plot_blogs <- gvisMerge(One_Gram_Plot_blogs, Two_Gram_Plot_blogs, horizontal = FALSE)
+n_Gram_Plot_blogs <- gvisMerge(n_Gram_Plot_blogs, Tri_Gram_Plot_blogs, horizontal = FALSE)
+
+print(n_Gram_Plot_blogs, "chart")
+```
+
+###News data n-grams frequency analysis
+```{r}
+news.One_Gram_Analysis <- sort(rowSums(as.matrix(news.One_Gram)), decreasing = TRUE)
+news.One_Gram_Analysis <- as.data.frame(as.matrix(news.One_Gram_Analysis))
+news.One_Gram_Analysis$TriGram <- rownames(news.One_Gram_Analysis)
+news.One_Gram_Analysis <- news.One_Gram_Analysis[,c(2,1)]
+colnames(news.One_Gram_Analysis) <- c("news.1-gram", "count")
+
+One_Gram_Plot_news <- gvisColumnChart(
+    head(news.One_Gram_Analysis, top),
+    xvar = "news.1-gram",
+    yvar = "count",
+    options=list(
+        width=900,height=400,
+        title = paste("The top ", top, " 3-grams with Highest Frequency over n=", sample.size, " samples from the ", summary[1,1] ," dataset", sep="")
+        )
+    )
+
+news.Two_Gram_Analysis <- sort(rowSums(as.matrix(news.Two_Gram)), decreasing = TRUE)
+news.Two_Gram_Analysis <- as.data.frame(as.matrix(news.Two_Gram_Analysis))
+news.Two_Gram_Analysis$TriGram <- rownames(news.Two_Gram_Analysis)
+news.Two_Gram_Analysis <- news.Two_Gram_Analysis[,c(2,1)]
+colnames(news.Two_Gram_Analysis) <- c("news.2-gram", "count")
+
+Two_Gram_Plot_news <- gvisColumnChart(
+    head(news.Two_Gram_Analysis, top),
+    xvar = "news.2-gram",
+    yvar = "count",
+    options=list(
+        width=900,height=400,
+        title = paste("The top ", top, " 2-grams with Highest Frequency over n=", sample.size, " samples from the ", summary[1,1] ," dataset", sep="")        
+        )
+    )
+
+news.Tri_Gram_Analysis <- sort(rowSums(as.matrix(news.Tri_Gram)), decreasing = TRUE)
+news.Tri_Gram_Analysis <- as.data.frame(as.matrix(news.Tri_Gram_Analysis))
+news.Tri_Gram_Analysis$TriGram <- rownames(news.Tri_Gram_Analysis)
+news.Tri_Gram_Analysis <- news.Tri_Gram_Analysis[,c(2,1)]
+colnames(news.Tri_Gram_Analysis) <- c("news.3-gram", "count")
+
+Tri_Gram_Plot_news <- gvisColumnChart(
+    head(news.Tri_Gram_Analysis, top),
+    xvar = "news.3-gram",
+    yvar = "count",
+    options=list(
+        width=900,height=400, 
+        title = paste("The top ", top, " 3-grams with Highest Frequency over n=", sample.size, " samples from the ", summary[1,1] ," dataset", sep="")
+        )
+    )
+
+n_Gram_Plot_news <- gvisMerge(One_Gram_Plot_news, Two_Gram_Plot_news, horizontal = FALSE)
+n_Gram_Plot_news <- gvisMerge(n_Gram_Plot_news, Tri_Gram_Plot_news, horizontal = FALSE)
+
+print(n_Gram_Plot_news, "chart")
+```
+
+The essential data displayed the relative sizes of each text source. There is a strong indication that the news and the blogs have multiple lines and the finding was verified through further exploration of both sources. In the exploratory stage, the profanity will not be censored as they only surface at the 250th word mark.
+
+## Interesting Findings
+NGRAMs are the basic building blocks for language prediction. The following 4 graphs depict the UNI-gram, BI-gram, TRI-gram and QUAD-gram models. 
+
+##Subsequent Steps
+1. Implement a simple back off model
+   *sense 3 word input then use quad gram to predict the 4th word else
+   *sense 2 word input then use tri gram to predict the 3rd word else
+   *sense 1 word input then use bi gram to predict the 2nd word
+2. Try smoothing and explore markhov chain techniques
